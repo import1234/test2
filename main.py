@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from DrissionPage import ChromiumPage, ChromiumOptions
 
 # ==========================================
-# 🔐 Webhook 링크 (GitHub Secrets)
+# 🔐 GitHub Secrets
 # ==========================================
 GENERAL_WEBHOOK = os.getenv("GENERAL_WEBHOOK")
 LOG_WEBHOOK = os.getenv("LOG_WEBHOOK")
@@ -91,6 +91,9 @@ loop_count = 0
 start_time = datetime.now(ZoneInfo("Asia/Seoul"))
 max_duration = timedelta(hours=5, minutes=55)
 
+# 이전 루프의 상태를 기억할 리스트 선언
+previous_seats_info = []
+
 while True:
     now = datetime.now(ZoneInfo("Asia/Seoul"))
     loop_count += 1
@@ -101,7 +104,7 @@ while True:
 
     try:
         page.get(MAIN_URL)
-        page.wait(1.5)
+        page.wait(1)
 
         # 1. 팝업 처리
         popup_btn = page.ele('text:오늘 하루 그만보기', timeout=1)
@@ -117,17 +120,17 @@ while True:
             t_time = target['time']
             
             # 날짜 클릭 (React Inject)
-            date_element = page.ele(f'@aria-label:{t_date}', timeout=1.5)
+            date_element = page.ele(f'@aria-label:{t_date}', timeout=1)
             if not date_element:
                 continue
             date_element.run_js(REACT_INJECT_JS)
             page.wait(0.6)
             
             # 시간 클릭 (React Inject)
-            time_list = page.ele('.product_time_list', timeout=1.5)
+            time_list = page.ele('.product_time_list', timeout=1)
             if not time_list:
                 continue
-            time_element = time_list.ele(f'text:{t_time}', timeout=1.5)
+            time_element = time_list.ele(f'text:{t_time}', timeout=1)
             if not time_element:
                 continue
             time_element.run_js(REACT_INJECT_JS)
@@ -143,13 +146,24 @@ while True:
                 if "매진" not in seat_num and "0" not in seat_num:
                     available_seats_info.append(f"[{t_date} {t_time}] {seat_title}: {seat_num}석")
 
-        # 3. 결과 판별 및 디스코드 알림
+        # 3. 결과 판별 및 디스코드 알림 (이전 상태와 비교 로직 적용)
         if available_seats_info:
-            seat_msg = "\n".join(available_seats_info)
-            send_discord(f"🔔 @here 🚨🎉 취소표 발생!!\n{seat_msg}\n👉 {MAIN_URL}", mode="all")
+            # 🔥 현재 발견된 좌석과 이전 루프의 좌석이 다를 때만 알림 전송
+            # (set을 사용하여 순서에 상관없이 구성 요소만 정확히 일치하는지 판별)
+            if set(available_seats_info) != set(previous_seats_info):
+                seat_msg = "\n".join(available_seats_info)
+                send_discord(f"🔔 @here 🚨🎉 상태 변동!\n{seat_msg}\n👉 {MAIN_URL}", mode="all")
+            else:
+                # 표는 있지만 이전과 수량/종류가 똑같다면 알림 스킵 (로그만 가끔 찍음)
+                if loop_count % 10 == 0:
+                    send_discord(f"-# {loop_count}회차 감시 중... 상태 유지 중", mode="log")
         else:
+            # 매진일 때 (알림 X)
             if loop_count % 10 == 0:
                 send_discord(f"-# {loop_count}회차 감시 중... 전부 매진", mode="log")
+
+        # 다음 루프에서 비교하기 위해 현재 상태를 이전 상태로 덮어씌움
+        previous_seats_info = available_seats_info.copy()
 
         # 서버 밴 방지를 위한 랜덤 대기 후 다음 루프 (새로고침)
         time.sleep(random.uniform(4.0, 8.0))
