@@ -170,6 +170,6 @@ while True:
 
     except Exception as e:
         send_discord(f"⚠️ 루프 에러! 다음 루프로 넘어갑니다...\n{str(e)[:500]}", mode="log")
-        time.sleep(random.uniform(10.0,30.0)
+        time.sleep(random.uniform(10.0,30.0))
 
 page.quit()
